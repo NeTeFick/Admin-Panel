@@ -14,10 +14,9 @@ app.use(
   bodyParser.json(),
   express.static(path.join(__dirname, "public")),
   mainRoute,
-  gamesRoute,
-)
-
+  gamesRoute
+);
 
 app.listen(PORT, () => {
   console.log(`Сервер запущен на порту ${PORT}`);
-})
+});
