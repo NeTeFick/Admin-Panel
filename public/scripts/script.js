@@ -1,92 +1,146 @@
-const fetchGame = async url => {
+const fetchGames = async url => {
   try {
-    const response = await fetch(url);
-    return response.json();
+    const games = await fetch(url);
+    return games.json();
   } catch (error) {
     console.log(error);
   }
 };
 
-const addData = async () => {
-  const data = await fetchGame("/game");
-  const gameElement = document.querySelector(".game");
-  gameElement.querySelector(".game__title").textContent = data.title;
-  gameElement.querySelector(".game__description").textContent =
-    data.description;
-  gameElement.querySelector(".game__image").src = data.image;
-  return data;
+const showPlaceholder = (selector, message) => {
+  const placeholder = document.createElement("li");
+  placeholder.classList.add("placeholder");
+  placeholder.textContent = message;
+  document.querySelector(selector).append(placeholder);
 };
 
-const object = addData();
-const form = document.querySelector(".vote");
+const removePlaceholder = selector => {
+  const placeholder = document.querySelector(selector);
+  if (placeholder) {
+    placeholder.remove();
+  }
+};
 
-form.addEventListener("submit", async event => {
-  event.preventDefault();
-  const formData = new FormData(form);
-  const obj = {
-    id: (await object).id,
-    gameplay: +formData.get("gameplay") ? +formData.get("gameplay") : 0,
-    design: +formData.get("design") ? +formData.get("design") : 0,
-    idea: +formData.get("idea") ? +formData.get("idea") : 0
-  };
-  const response = await fetch("/vote", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(obj)
+const buildCard = (object, template) => {
+  const node = template.content.cloneNode(true);
+  node.querySelector("a").href = object.link;
+  node.querySelector("img").src = object.image;
+  node.querySelector("h2").textContent = object.title;
+  node.querySelector("p").textContent = object.description;
+  return node;
+};
+
+const createListItem = (parent, item, template) => {
+  const li = document.createElement("li");
+  li.id = `game-${item.id}`;
+  const deleteButton = document.createElement("button");
+  deleteButton.textContent = "Удалить";
+  deleteButton.classList.add("delete-game__button");
+  li.append(buildCard(item, template));
+  li.append(deleteButton);
+  parent.prepend(li);
+  submitDelete(li);
+};
+
+const createGamesListItems = (listSelector, template, array) => {
+  const ul = document.querySelector(listSelector);
+  array.forEach(item => {
+    createListItem(ul, item, template);
   });
-  const result = await response.json();
-  document.querySelector("main").innerHTML = "";
-  const ul = document.createElement("ul");
-  ul.classList.add("box");
-  const h2 = document.createElement("h2");
-  h2.textContent = "Рейтинг игр:";
-  ul.append(h2);
-  result.forEach(element => {
-    const li = document.createElement("li");
-    li.textContent = `${element.title}: ${element.rating}`;
-    ul.append(li);
-  });
-  const button = document.createElement("button");
-  button.textContent = "Ещё одна рандомная игра";
-  button.classList.add("play-again");
-  ul.append(button);
-  document.querySelector("main").append(ul);
-  document.querySelector(".play-again").addEventListener("click", () => {
-    location.reload();
-  });
+};
+
+fetchGames("/games").then(data => {
+  if (!data || !data.length) {
+    showPlaceholder(".games-list", "Нет игр в базе данных. Добавьте игру.");
+    return;
+  } else {
+    createGamesListItems(
+      ".games-list",
+      document.querySelector("#game-card"),
+      data
+    );
+  }
 });
 
-document.querySelector(".play").addEventListener("click", async () => {
-  document.querySelector("#game-dialog").showModal();
-  document.querySelector("#game-dialog iframe").src = (await object).link;
-  document.body.style.overflow = "hidden";
+document.querySelector(".add-game__button").addEventListener("click", () => {
+  document.querySelector("#form-dialog").showModal();
 });
 
-document.querySelector(".close").addEventListener("click", () => {
-  document.querySelector("#game-dialog").close();
-  document.querySelector("#game-dialog iframe").src = "";
-  document.body.style.overflow = "auto";
+document.querySelector(".close-dialog").addEventListener("click", () => {
+  document.querySelector("#form-dialog").close();
 });
 
-function colorStars(containerSelector) {
-  const targetContainer = document.querySelector(containerSelector);
-  const stars = targetContainer.querySelectorAll(".star svg");
-  const radio = targetContainer.querySelectorAll(".radio");
-  radio.forEach((el, index) => {
-    el.addEventListener("input", () => {
-      stars.forEach((star, i) => {
-        if (i <= index) {
-          star.classList.add("colored");
-        } else {
-          star.classList.remove("colored");
-        }
-      });
+const sendForm = async (url, object) => {
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(object)
     });
-  });
-}
+    return resp;
+  } catch (error) {
+    console.log(error);
+  }
+};
 
-colorStars(".gameplay");
-colorStars(".design");
-colorStars(".idea");
+const submitForm = (() => {
+  const form = document.querySelector(".game-form");
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const data = new FormData(form);
+    const objectToSend = {
+      title: data.get("title"),
+      image: data.get("image"),
+      link: data.get("link"),
+      description: data.get("description")
+    };
+    const resp = await sendForm("/games", objectToSend);
+    if (resp.status !== 200) {
+      form.querySelector(".form__message").classList.add("error");
+      form.querySelector(".form__message").textContent =
+        "Игра с таким именем уже есть";
+      return;
+    }
+    form.querySelector(".form__message").classList.add("success");
+    form.querySelector(".form__message").textContent = "Игра добавлена";
+    const obj = (await resp.json()).updated;
+    createListItem(
+      document.querySelector(".games-list"),
+      obj,
+      document.querySelector("#game-card")
+    );
+    form.reset();
+    document.querySelector("#form-dialog").close();
+    removePlaceholder(".placeholder");
+  });
+})();
+
+const deleteGame = async (url, id) => {
+  try {
+    const response = await fetch(`${url}/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ id })
+    });
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+const submitDelete = async item => {
+  item
+    .querySelector(".delete-game__button")
+    .addEventListener("click", async e => {
+      const id = e.target.parentElement.id.split("-")[1];
+      await deleteGame("/games", id);
+      e.target.parentElement.remove();
+      let hasCards = document.querySelectorAll(".games-list li");
+      if (!hasCards.length) {
+        showPlaceholder(".games-list", "Нет игр в базе данных. Добавьте игру.");
+      }
+    });
+};
